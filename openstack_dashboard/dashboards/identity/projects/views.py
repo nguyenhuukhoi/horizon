@@ -225,7 +225,9 @@ class UpdateQuotasView(workflows.WorkflowView):
                 volume_quota_data = {}
                 for quota in quota_data:
                     initial[quota.name] = quota.limit
-                    if quotas.is_cinder_quota_key(quota.name):
+                    if (quotas.is_cinder_quota_key(quota.name) and
+                            not quotas.is_default_cinder_quota_key(
+                                quota.name)):
                         volume_quota_fields.append(quota.name)
                         volume_quota_data[quota.name] = quota.limit
                 initial['volume_quota_fields'] = tuple(volume_quota_fields)

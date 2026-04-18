@@ -22,6 +22,7 @@ from horizon import tables
 from horizon.templatetags import sizeformat
 from openstack_dashboard import api
 from openstack_dashboard.usage import base
+from openstack_dashboard.usage import quotas
 
 
 class UsageView(tables.DataTableView):
@@ -115,7 +116,8 @@ def _get_dynamic_volume_chart_defs(limits):
     dynamic_quota_keys = sorted(
         [key for key in quota_usages
          if key not in ('volumes', 'snapshots', 'gigabytes') and
-         key.startswith(('volumes_', 'snapshots_', 'gigabytes_'))],
+         key.startswith(('volumes_', 'snapshots_', 'gigabytes_')) and
+         not quotas.is_default_cinder_quota_key(key)],
         key=lambda key: (
             key.split('_', 1)[1],
             ('volumes', 'snapshots', 'gigabytes').index(

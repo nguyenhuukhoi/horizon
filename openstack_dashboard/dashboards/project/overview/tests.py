@@ -311,6 +311,9 @@ class UsageViewTests(test.TestCase):
     def test_usage_charts_created_with_volume_type_quotas(self):
         res = self._test_usage_charts(
             quota_usage_overrides={
+                'volumes___DEFAULT__': {'quota': -1, 'used': 0},
+                'gigabytes___DEFAULT__': {'quota': -1, 'used': 0},
+                'snapshots___DEFAULT__': {'quota': -1, 'used': 0},
                 'volumes_khoinh5': {'quota': 20, 'used': 5},
                 'gigabytes_khoinh5': {'quota': 5000, 'used': 500},
                 'snapshots_khoinh5': {'quota': 30, 'used': 3},
@@ -336,6 +339,8 @@ class UsageViewTests(test.TestCase):
         self.assertEqual('5000GB', dynamic_chart['quota_display'])
         self.assertEqual(500, dynamic_chart['used'])
         self.assertEqual('500GB', dynamic_chart['used_display'])
+        self.assertNotIn('volumes___DEFAULT__',
+                         [chart['type'] for chart in volume_charts['charts']])
 
     def test_disallowed_network_chart(self):
         res = self._test_usage_charts(

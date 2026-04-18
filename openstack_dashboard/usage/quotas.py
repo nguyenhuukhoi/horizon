@@ -75,6 +75,7 @@ CINDER_QUOTA_FIELD_PREFIXES = (
     'snapshots_',
     'gigabytes_',
 )
+CINDER_QUOTA_DEFAULT_TYPE = '__DEFAULT__'
 
 CINDER_QUOTA_LIMIT_MAP = {
     'volumes': {'usage': 'totalVolumesUsed',
@@ -124,6 +125,16 @@ QUOTA_NAMES = {
 def is_cinder_quota_key(name):
     return (name in CINDER_QUOTA_FIELDS or
             name.startswith(CINDER_QUOTA_FIELD_PREFIXES))
+
+
+def get_cinder_quota_type(name):
+    if not name.startswith(CINDER_QUOTA_FIELD_PREFIXES):
+        return None
+    return name.split('_', 1)[1]
+
+
+def is_default_cinder_quota_key(name):
+    return get_cinder_quota_type(name) == CINDER_QUOTA_DEFAULT_TYPE
 
 
 class QuotaUsage(dict):

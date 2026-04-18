@@ -1034,6 +1034,9 @@ class UpdateQuotasWorkflowTests(test.BaseAdminViewTests):
                                  'get_disabled_quotas')})
     def test_update_quotas_get_with_volume_type_quotas(self):
         quota = self._get_quota({
+            'volumes___DEFAULT__': -1,
+            'gigabytes___DEFAULT__': -1,
+            'snapshots___DEFAULT__': -1,
             'volumes_khoinh5': 20,
             'gigabytes_khoinh5': 5000,
             'snapshots_khoinh5': 30,
@@ -1062,6 +1065,8 @@ class UpdateQuotasWorkflowTests(test.BaseAdminViewTests):
         self.assertEqual(20,
                          workflow.context['volume_quota_data'][
                              'volumes_khoinh5'])
+        self.assertNotIn('volumes___DEFAULT__',
+                         workflow.context['volume_quota_fields'])
         self.assertEqual(6000,
                          workflow.context['volume_quota_data'][
                              'gigabytes_gold_ssd'])
