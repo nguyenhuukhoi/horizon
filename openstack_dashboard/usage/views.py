@@ -93,6 +93,40 @@ def _check_network_allowed(request):
     return api.neutron.is_quotas_extension_supported(request)
 
 
+def _get_volume_type_chart_label(quota_name):
+    quota_dynamic_names = {
+        'volumes': _('Volumes of Type %(type)s'),
+        'snapshots': _('Volume Snapshots of Type %(type)s'),
+        'gigabytes': _('Volume Storage of Type %(type)s'),
+    }
+
+    params = {'type': quota_name.split('_', 1)[1]}
+    return quota_dynamic_names.get(quota_name.split('_', 1)[0]) % params
+
+
+def _get_volume_type_chart_filter(quota_name):
+    if quota_name.startswith('gigabytes_'):
+        return (sizeformat.diskgbformat,)
+    return None
+
+
+def _get_dynamic_volume_chart_defs(limits):
+    quota_usages = getattr(limits, 'usages', limits)
+    dynamic_quota_keys = sorted(
+        [key for key in quota_usages
+         if key not in ('volumes', 'snapshots', 'gigabytes') and
+         key.startswith(('volumes_', 'snapshots_', 'gigabytes_'))],
+        key=lambda key: (
+            key.split('_', 1)[1],
+            ('volumes', 'snapshots', 'gigabytes').index(
+                key.split('_', 1)[0])))
+    return [ChartDef(key,
+                     _get_volume_type_chart_label(key),
+                     None,
+                     _get_volume_type_chart_filter(key))
+            for key in dynamic_quota_keys]
+
+
 ChartDef = collections.namedtuple(
     'ChartDef',
     ('quota_key', 'label', 'used_phrase', 'filters'))
@@ -126,6 +160,7 @@ CHART_DEFS = [
             ChartDef("gigabytes", _("Volume Storage"), None,
                      (sizeformat.diskgbformat,)),
         ],
+        'dynamic_chart_def': _get_dynamic_volume_chart_defs,
     },
     {
         'title': _("Network"),
@@ -159,7 +194,11 @@ class ProjectUsageView(UsageView):
         chart_sections = []
         for section in CHART_DEFS:
             if self._check_chart_allowed(section):
-                chart_data = self._process_chart_section(section['charts'])
+                chart_defs = list(section['charts'])
+                if 'dynamic_chart_def' in section:
+                    chart_defs.extend(section['dynamic_chart_def'](
+                        self.usage.limits))
+                chart_data = self._process_chart_section(chart_defs)
                 chart_sections.append({
                     'title': section['title'],
                     'charts': chart_data

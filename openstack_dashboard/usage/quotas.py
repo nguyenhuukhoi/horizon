@@ -70,6 +70,12 @@ CINDER_QUOTA_FIELDS = {"volumes",
                        "snapshots",
                        "gigabytes"}
 
+CINDER_QUOTA_FIELD_PREFIXES = (
+    'volumes_',
+    'snapshots_',
+    'gigabytes_',
+)
+
 CINDER_QUOTA_LIMIT_MAP = {
     'volumes': {'usage': 'totalVolumesUsed',
                 'limit': 'maxTotalVolumes'},
@@ -113,6 +119,11 @@ QUOTA_NAMES = {
     "security_group": _("Security Groups"),
     "security_group_rule": _("Security Group Rules")
 }
+
+
+def is_cinder_quota_key(name):
+    return (name in CINDER_QUOTA_FIELDS or
+            name.startswith(CINDER_QUOTA_FIELD_PREFIXES))
 
 
 class QuotaUsage(dict):
@@ -202,7 +213,9 @@ def get_default_quota_data(request, disabled_quotas=None, tenant_id=None):
 
     qs = base.QuotaSet()
     for quota in itertools.chain(*quotasets):
-        if quota.name not in disabled_quotas and quota.name in QUOTA_FIELDS:
+        if (quota.name not in disabled_quotas and
+                (quota.name in QUOTA_FIELDS or
+                 is_cinder_quota_key(quota.name))):
             qs[quota.name] = quota.limit
     return qs
 
@@ -241,7 +254,9 @@ def get_tenant_quota_data(request, disabled_quotas=None, tenant_id=None):
 
     qs = base.QuotaSet()
     for quota in itertools.chain(*quotasets):
-        if quota.name not in disabled_quotas and quota.name in QUOTA_FIELDS:
+        if (quota.name not in disabled_quotas and
+                (quota.name in QUOTA_FIELDS or
+                 is_cinder_quota_key(quota.name))):
             qs[quota.name] = quota.limit
     return qs
 
@@ -263,7 +278,8 @@ def get_disabled_quotas(request, targets=None):
     disabled_quotas = set()
 
     # Cinder
-    if candidates & CINDER_QUOTA_FIELDS:
+    if candidates & CINDER_QUOTA_FIELDS or any(
+            is_cinder_quota_key(quota) for quota in candidates):
         if not cinder.is_volume_service_enabled(request):
             disabled_quotas.update(CINDER_QUOTA_FIELDS)
 
@@ -375,6 +391,20 @@ def _get_tenant_volume_usages(request, usages, disabled_quotas, tenant_id):
                              limits[limit_keys['limit']],
                              limits[limit_keys['usage']],
                              disabled_quotas)
+    try:
+        details = cinder.tenant_quota_detail_get(request, tenant_id)
+    except cinder.cinder_exception.ClientException:
+        return
+
+    for quota_name, detail in details.items():
+        if (quota_name in CINDER_QUOTA_FIELDS or
+                not is_cinder_quota_key(quota_name)):
+            continue
+        if quota_name in disabled_quotas:
+            continue
+        usages.add_quota(base.Quota(quota_name, detail['limit']))
+        usages.tally(quota_name,
+                     detail.get('in_use', 0) + detail.get('reserved', 0))
 
 
 @profiler.trace

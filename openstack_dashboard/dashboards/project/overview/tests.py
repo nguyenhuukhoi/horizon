@@ -308,6 +308,35 @@ class UsageViewTests(test.TestCase):
         self.assertEqual(1234, chart_fip['used'])
         self.assertEqual('1,234', chart_fip['used_display'])
 
+    def test_usage_charts_created_with_volume_type_quotas(self):
+        res = self._test_usage_charts(
+            quota_usage_overrides={
+                'volumes_khoinh5': {'quota': 20, 'used': 5},
+                'gigabytes_khoinh5': {'quota': 5000, 'used': 500},
+                'snapshots_khoinh5': {'quota': 30, 'used': 3},
+                'volumes_gold_ssd': {'quota': 40, 'used': 4},
+                'gigabytes_gold_ssd': {'quota': 6000, 'used': 400},
+                'snapshots_gold_ssd': {'quota': 50, 'used': 2},
+            })
+        charts = res.context['charts']
+
+        volume_charts = [c for c in charts if c['title'] == 'Volume'][0]
+        self.assertEqual(
+            ['volumes', 'snapshots', 'gigabytes',
+             'volumes_gold_ssd', 'snapshots_gold_ssd',
+             'gigabytes_gold_ssd', 'volumes_khoinh5',
+             'snapshots_khoinh5', 'gigabytes_khoinh5'],
+            [chart['type'] for chart in volume_charts['charts']])
+
+        dynamic_chart = [c for c in volume_charts['charts']
+                         if c['type'] == 'gigabytes_khoinh5'][0]
+        self.assertEqual('Volume Storage of Type khoinh5',
+                         str(dynamic_chart['name']))
+        self.assertEqual(5000, dynamic_chart['quota'])
+        self.assertEqual('5000GB', dynamic_chart['quota_display'])
+        self.assertEqual(500, dynamic_chart['used'])
+        self.assertEqual('500GB', dynamic_chart['used_display'])
+
     def test_disallowed_network_chart(self):
         res = self._test_usage_charts(
             quota_usage_overrides={'floatingip': {'quota': -1, 'used': 1234}},

@@ -119,11 +119,21 @@ class QuotaTests(test.APITestCase):
                             actual_usages.items() if 'available' in value}
         self.assertEqual(expected_available, actual_available, msg=msg)
 
-    @test.create_mocks({
-        api.nova: (('tenant_absolute_limits', 'nova_tenant_absolute_limits'),),
-        api.base: ('is_service_enabled',),
-        cinder: (('tenant_absolute_limits', 'cinder_tenant_absolute_limits'),
-                 'is_volume_service_enabled')})
+    def _get_cinder_quota_set(self, quota_data):
+        quota_set = api.base.QuotaSet()
+        for key, value in quota_data.items():
+            quota_set[key] = value
+        return quota_set
+
+    @test.create_mocks(
+        {api.nova: (('tenant_absolute_limits',
+                     'nova_tenant_absolute_limits'),),
+         api.base: ('is_service_enabled',),
+         cinder: (('tenant_absolute_limits',
+                   'cinder_tenant_absolute_limits'),
+                  ('tenant_quota_detail_get',
+                   'cinder_tenant_quota_detail_get'),
+                  'is_volume_service_enabled')})
     def test_tenant_quota_usages_with_id(self):
         tenant_id = 3
 
@@ -132,6 +142,7 @@ class QuotaTests(test.APITestCase):
             self.limits['absolute']
         self.mock_cinder_tenant_absolute_limits.return_value = \
             self.cinder_limits['absolute']
+        self.mock_cinder_tenant_quota_detail_get.return_value = {}
 
         quota_usages = quotas.tenant_quota_usages(self.request,
                                                   tenant_id=tenant_id)
@@ -148,12 +159,18 @@ class QuotaTests(test.APITestCase):
             test.IsHttpRequest(), reserved=True, tenant_id=tenant_id)
         self.mock_cinder_tenant_absolute_limits.assert_called_once_with(
             test.IsHttpRequest(), tenant_id)
+        self.mock_cinder_tenant_quota_detail_get.assert_called_once_with(
+            test.IsHttpRequest(), tenant_id)
 
-    @test.create_mocks({
-        api.nova: (('tenant_absolute_limits', 'nova_tenant_absolute_limits'),),
-        api.base: ('is_service_enabled',),
-        cinder: (('tenant_absolute_limits', 'cinder_tenant_absolute_limits'),
-                 'is_volume_service_enabled')})
+    @test.create_mocks(
+        {api.nova: (('tenant_absolute_limits',
+                     'nova_tenant_absolute_limits'),),
+         api.base: ('is_service_enabled',),
+         cinder: (('tenant_absolute_limits',
+                   'cinder_tenant_absolute_limits'),
+                  ('tenant_quota_detail_get',
+                   'cinder_tenant_quota_detail_get'),
+                  'is_volume_service_enabled')})
     def _test_tenant_quota_usages(self,
                                   nova_quotas_enabled=True,
                                   with_compute=True, with_volume=True,
@@ -168,6 +185,7 @@ class QuotaTests(test.APITestCase):
         if with_volume:
             self.mock_cinder_tenant_absolute_limits.return_value = \
                 self.cinder_limits['absolute']
+            self.mock_cinder_tenant_quota_detail_get.return_value = {}
 
         quota_usages = quotas.tenant_quota_usages(self.request)
         expected_output = self.get_usages_from_limits(
@@ -193,8 +211,11 @@ class QuotaTests(test.APITestCase):
         if with_volume:
             self.mock_cinder_tenant_absolute_limits.assert_called_once_with(
                 test.IsHttpRequest(), tenant_id)
+            self.mock_cinder_tenant_quota_detail_get.assert_called_once_with(
+                test.IsHttpRequest(), tenant_id)
         else:
             self.mock_cinder_tenant_absolute_limits.assert_not_called()
+            self.mock_cinder_tenant_quota_detail_get.assert_not_called()
 
     def test_tenant_quota_usages(self):
         self._test_tenant_quota_usages()
@@ -269,11 +290,15 @@ class QuotaTests(test.APITestCase):
         self.mock_tenant_absolute_limits.assert_called_once_with(
             test.IsHttpRequest(), reserved=True, tenant_id='1')
 
-    @test.create_mocks({
-        api.nova: (('tenant_absolute_limits', 'nova_tenant_absolute_limits'),),
-        api.base: ('is_service_enabled',),
-        cinder: (('tenant_absolute_limits', 'cinder_tenant_absolute_limits'),
-                 'is_volume_service_enabled')})
+    @test.create_mocks(
+        {api.nova: (('tenant_absolute_limits',
+                     'nova_tenant_absolute_limits'),),
+         api.base: ('is_service_enabled',),
+         cinder: (('tenant_absolute_limits',
+                   'cinder_tenant_absolute_limits'),
+                  ('tenant_quota_detail_get',
+                   'cinder_tenant_quota_detail_get'),
+                  'is_volume_service_enabled')})
     def test_tenant_quota_usages_unlimited_quota(self):
         tenant_id = '1'
         inf_quota = self.quotas.first()
@@ -284,6 +309,7 @@ class QuotaTests(test.APITestCase):
             self.limits['absolute']
         self.mock_cinder_tenant_absolute_limits.return_value = \
             self.cinder_limits['absolute']
+        self.mock_cinder_tenant_quota_detail_get.return_value = {}
 
         quota_usages = quotas.tenant_quota_usages(self.request)
         expected_output = self.get_usages_from_limits()
@@ -299,12 +325,18 @@ class QuotaTests(test.APITestCase):
             test.IsHttpRequest(), reserved=True, tenant_id=tenant_id)
         self.mock_cinder_tenant_absolute_limits.assert_called_once_with(
             test.IsHttpRequest(), tenant_id)
+        self.mock_cinder_tenant_quota_detail_get.assert_called_once_with(
+            test.IsHttpRequest(), tenant_id)
 
-    @test.create_mocks({
-        api.nova: (('tenant_absolute_limits', 'nova_tenant_absolute_limits'),),
-        api.base: ('is_service_enabled',),
-        cinder: (('tenant_absolute_limits', 'cinder_tenant_absolute_limits'),
-                 'is_volume_service_enabled')})
+    @test.create_mocks(
+        {api.nova: (('tenant_absolute_limits',
+                     'nova_tenant_absolute_limits'),),
+         api.base: ('is_service_enabled',),
+         cinder: (('tenant_absolute_limits',
+                   'cinder_tenant_absolute_limits'),
+                  ('tenant_quota_detail_get',
+                   'cinder_tenant_quota_detail_get'),
+                  'is_volume_service_enabled')})
     def test_tenant_quota_usages_neutron_fip_disabled(self):
         tenant_id = '1'
 
@@ -313,6 +345,7 @@ class QuotaTests(test.APITestCase):
             self.limits['absolute']
         self.mock_cinder_tenant_absolute_limits.return_value = \
             self.cinder_limits['absolute']
+        self.mock_cinder_tenant_quota_detail_get.return_value = {}
 
         quota_usages = quotas.tenant_quota_usages(self.request)
         expected_output = self.get_usages_from_limits()
@@ -324,6 +357,52 @@ class QuotaTests(test.APITestCase):
         self.mock_nova_tenant_absolute_limits.assert_called_once_with(
             test.IsHttpRequest(), reserved=True, tenant_id=tenant_id)
         self.mock_cinder_tenant_absolute_limits.assert_called_once_with(
+            test.IsHttpRequest(), tenant_id)
+        self.mock_cinder_tenant_quota_detail_get.assert_called_once_with(
+            test.IsHttpRequest(), tenant_id)
+
+    @test.create_mocks(
+        {api.nova: (('tenant_absolute_limits',
+                     'nova_tenant_absolute_limits'),),
+         api.base: ('is_service_enabled',),
+         cinder: (('tenant_absolute_limits',
+                   'cinder_tenant_absolute_limits'),
+                  ('tenant_quota_detail_get',
+                   'cinder_tenant_quota_detail_get'),
+                  'is_volume_service_enabled')})
+    def test_tenant_quota_usages_with_volume_type_quotas(self):
+        tenant_id = '1'
+
+        self._mock_service_enabled()
+        self.mock_nova_tenant_absolute_limits.return_value = \
+            self.limits['absolute']
+        self.mock_cinder_tenant_absolute_limits.return_value = \
+            self.cinder_limits['absolute']
+        self.mock_cinder_tenant_quota_detail_get.return_value = {
+            'volumes_khoinh5': {'limit': 20, 'in_use': 4, 'reserved': 1},
+            'gigabytes_khoinh5': {'limit': 5000, 'in_use': 400,
+                                  'reserved': 100},
+            'snapshots_khoinh5': {'limit': 30, 'in_use': 3, 'reserved': 2},
+        }
+
+        quota_usages = quotas.tenant_quota_usages(self.request)
+        expected_output = self.get_usages_from_limits()
+        expected_output.update({
+            'volumes_khoinh5': {'available': 15, 'used': 5, 'quota': 20},
+            'gigabytes_khoinh5': {'available': 4500, 'used': 500,
+                                  'quota': 5000},
+            'snapshots_khoinh5': {'available': 25, 'used': 5, 'quota': 30},
+        })
+
+        self.assertCountEqual(expected_output, quota_usages.usages)
+        self.assertAvailableQuotasEqual(expected_output, quota_usages.usages)
+
+        self._check_service_enabled({'compute': 2, 'network': 1, 'volume': 1})
+        self.mock_nova_tenant_absolute_limits.assert_called_once_with(
+            test.IsHttpRequest(), reserved=True, tenant_id=tenant_id)
+        self.mock_cinder_tenant_absolute_limits.assert_called_once_with(
+            test.IsHttpRequest(), tenant_id)
+        self.mock_cinder_tenant_quota_detail_get.assert_called_once_with(
             test.IsHttpRequest(), tenant_id)
 
     @test.create_mocks({api.base: ('is_service_enabled',),
@@ -343,6 +422,80 @@ class QuotaTests(test.APITestCase):
         self.mock_handle.assert_called_once_with(
             test.IsHttpRequest(),
             _("Unable to retrieve volume limit information."))
+
+    @test.create_mocks({api.base: ('is_service_enabled',),
+                        cinder: ('tenant_quota_get',
+                                 'is_volume_service_enabled')})
+    def test_get_tenant_quota_data_with_default_volume_quotas(self):
+        self._mock_service_enabled(compute_enabled=False)
+        self.mock_tenant_quota_get.return_value = self._get_cinder_quota_set({
+            'volumes': 10,
+            'gigabytes': 1000,
+            'snapshots': 10,
+        })
+
+        quota_data = quotas.get_tenant_quota_data(self.request)
+
+        self.assertCountEqual(
+            ['volumes', 'gigabytes', 'snapshots'],
+            [quota.name for quota in quota_data])
+        self._check_service_enabled({'compute': 1, 'network': 1, 'volume': 1})
+        self.mock_tenant_quota_get.assert_called_once_with(
+            test.IsHttpRequest(), '1')
+
+    @test.create_mocks({api.base: ('is_service_enabled',),
+                        cinder: ('tenant_quota_get',
+                                 'is_volume_service_enabled')})
+    def test_get_tenant_quota_data_with_single_volume_type_quotas(self):
+        self._mock_service_enabled(compute_enabled=False)
+        self.mock_tenant_quota_get.return_value = self._get_cinder_quota_set({
+            'volumes': 10,
+            'gigabytes': 1000,
+            'snapshots': 10,
+            'volumes_khoinh5': 20,
+            'gigabytes_khoinh5': 5000,
+            'snapshots_khoinh5': 30,
+            'backups': 40,
+        })
+
+        quota_data = quotas.get_tenant_quota_data(self.request)
+
+        self.assertCountEqual(
+            ['volumes', 'gigabytes', 'snapshots',
+             'volumes_khoinh5', 'gigabytes_khoinh5', 'snapshots_khoinh5'],
+            [quota.name for quota in quota_data])
+        self._check_service_enabled({'compute': 1, 'network': 1, 'volume': 1})
+        self.mock_tenant_quota_get.assert_called_once_with(
+            test.IsHttpRequest(), '1')
+
+    @test.create_mocks({api.base: ('is_service_enabled',),
+                        cinder: ('tenant_quota_get',
+                                 'is_volume_service_enabled')})
+    def test_get_tenant_quota_data_with_multiple_volume_type_quotas(self):
+        self._mock_service_enabled(compute_enabled=False)
+        self.mock_tenant_quota_get.return_value = self._get_cinder_quota_set({
+            'volumes': 10,
+            'gigabytes': 1000,
+            'snapshots': 10,
+            'volumes_khoinh5': 20,
+            'gigabytes_khoinh5': 5000,
+            'snapshots_khoinh5': 30,
+            'volumes_gold_ssd': 40,
+            'gigabytes_gold_ssd': 6000,
+            'snapshots_gold_ssd': 50,
+        })
+
+        quota_data = quotas.get_tenant_quota_data(self.request)
+
+        self.assertCountEqual(
+            ['volumes', 'gigabytes', 'snapshots',
+             'volumes_khoinh5', 'gigabytes_khoinh5', 'snapshots_khoinh5',
+             'volumes_gold_ssd', 'gigabytes_gold_ssd',
+             'snapshots_gold_ssd'],
+            [quota.name for quota in quota_data])
+        self._check_service_enabled({'compute': 1, 'network': 1, 'volume': 1})
+        self.mock_tenant_quota_get.assert_called_once_with(
+            test.IsHttpRequest(), '1')
 
     @test.create_mocks({api.neutron: ('is_router_enabled',
                                       'is_extension_supported',
@@ -385,11 +538,15 @@ class QuotaTests(test.APITestCase):
             targets=('instances', 'cores', 'ram', 'volumes',),
             use_flavor_list=True, use_cinder_call=True)
 
-    @test.create_mocks({
-        api.nova: (('tenant_absolute_limits', 'nova_tenant_absolute_limits'),),
-        api.base: ('is_service_enabled',),
-        cinder: (('tenant_absolute_limits', 'cinder_tenant_absolute_limits'),
-                 'is_volume_service_enabled')})
+    @test.create_mocks(
+        {api.nova: (('tenant_absolute_limits',
+                     'nova_tenant_absolute_limits'),),
+         api.base: ('is_service_enabled',),
+         cinder: (('tenant_absolute_limits',
+                   'cinder_tenant_absolute_limits'),
+                  ('tenant_quota_detail_get',
+                   'cinder_tenant_quota_detail_get'),
+                  'is_volume_service_enabled')})
     def _test_tenant_quota_usages_with_target(
             self, targets, use_compute_call=True,
             use_flavor_list=False, use_cinder_call=False):
@@ -403,6 +560,7 @@ class QuotaTests(test.APITestCase):
         if use_cinder_call:
             self.mock_cinder_tenant_absolute_limits.return_value = \
                 self.cinder_limits['absolute']
+            self.mock_cinder_tenant_quota_detail_get.return_value = {}
 
         quota_usages = quotas.tenant_quota_usages(self.request,
                                                   targets=targets)
@@ -429,8 +587,11 @@ class QuotaTests(test.APITestCase):
         if use_cinder_call:
             self.mock_cinder_tenant_absolute_limits.assert_called_once_with(
                 test.IsHttpRequest(), tenant_id)
+            self.mock_cinder_tenant_quota_detail_get.assert_called_once_with(
+                test.IsHttpRequest(), tenant_id)
         else:
             self.mock_cinder_tenant_absolute_limits.assert_not_called()
+            self.mock_cinder_tenant_quota_detail_get.assert_not_called()
 
     def _list_security_group_rules(self):
         security_groups = self.security_groups.list()

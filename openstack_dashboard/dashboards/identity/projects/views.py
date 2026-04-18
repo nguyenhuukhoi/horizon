@@ -221,8 +221,15 @@ class UpdateQuotasView(workflows.WorkflowView):
             if keystone.is_cloud_admin(self.request):
                 quota_data = quotas.get_tenant_quota_data(self.request,
                                                           tenant_id=project_id)
-                for field in quotas.QUOTA_FIELDS:
-                    initial[field] = quota_data.get(field).limit
+                volume_quota_fields = []
+                volume_quota_data = {}
+                for quota in quota_data:
+                    initial[quota.name] = quota.limit
+                    if quotas.is_cinder_quota_key(quota.name):
+                        volume_quota_fields.append(quota.name)
+                        volume_quota_data[quota.name] = quota.limit
+                initial['volume_quota_fields'] = tuple(volume_quota_fields)
+                initial['volume_quota_data'] = volume_quota_data
         except Exception:
             exceptions.handle(self.request,
                               _('Unable to retrieve project quotas.'),

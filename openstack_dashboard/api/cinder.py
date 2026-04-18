@@ -734,6 +734,15 @@ def tenant_quota_get(request, tenant_id):
 
 
 @profiler.trace
+def tenant_quota_detail_get(request, tenant_id):
+    c_client = cinderclient(request)
+    if c_client is None:
+        return {}
+    quota_set = c_client.quotas.get(tenant_id, usage=True)
+    return {k: v for k, v in quota_set._info.items() if k != 'id'}
+
+
+@profiler.trace
 def tenant_quota_update(request, tenant_id, **kwargs):
     return cinderclient(request).quotas.update(tenant_id, **kwargs)
 

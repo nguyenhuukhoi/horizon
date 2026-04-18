@@ -975,22 +975,28 @@ class UpdateProjectWorkflowTests(test.BaseAdminViewTests):
 
 class UpdateQuotasWorkflowTests(test.BaseAdminViewTests):
 
+    def _get_quota(self, cinder_quota_data=None):
+        cinder_quota_data = cinder_quota_data or {}
+        quota = api.base.QuotaSet()
+        for quota_set in (self.quotas.first(),
+                          self.cinder_quotas.first(),
+                          self.neutron_quotas.first()):
+            for item in quota_set:
+                quota[item.name] = item.limit
+        for key, value in cinder_quota_data.items():
+            quota[key] = value
+        return quota
+
     def _get_quota_info(self, quota):
-        cinder_quota = self.cinder_quotas.first()
-        neutron_quota = self.neutron_quotas.first()
         quota_data = {}
-        for field in quotas.NOVA_QUOTA_FIELDS:
-            quota_data[field] = int(quota.get(field).limit)
-        for field in quotas.CINDER_QUOTA_FIELDS:
-            quota_data[field] = int(cinder_quota.get(field).limit)
-        for field in quotas.NEUTRON_QUOTA_FIELDS:
-            quota_data[field] = int(neutron_quota.get(field).limit)
+        for item in quota:
+            quota_data[item.name] = int(item.limit)
         return quota_data
 
     @test.create_mocks({quotas: ('get_tenant_quota_data',
                                  'get_disabled_quotas')})
     def test_update_quotas_get(self):
-        quota = self.quotas.first()
+        quota = self._get_quota()
 
         self.mock_get_disabled_quotas.return_value = set()
         self.mock_get_tenant_quota_data.return_value = quota
@@ -1009,6 +1015,10 @@ class UpdateQuotasWorkflowTests(test.BaseAdminViewTests):
         self.assertEqual(step.action.initial['ram'], quota.get('ram').limit)
         self.assertEqual(step.action.initial['injected_files'],
                          quota.get('injected_files').limit)
+        volume_step = workflow.get_step("update_volume_quotas")
+        self.assertEqual(volume_step.action.initial['volumes'],
+                         quota.get('volumes').limit)
+        self.assertNotIn('volumes_khoinh5', volume_step.action.fields)
         self.assertQuerysetEqual(
             workflow.steps,
             ['<UpdateComputeQuota: update_compute_quotas>',
@@ -1020,23 +1030,70 @@ class UpdateQuotasWorkflowTests(test.BaseAdminViewTests):
         self.mock_get_tenant_quota_data.assert_called_once_with(
             test.IsHttpRequest(), tenant_id=self.tenant.id)
 
+    @test.create_mocks({quotas: ('get_tenant_quota_data',
+                                 'get_disabled_quotas')})
+    def test_update_quotas_get_with_volume_type_quotas(self):
+        quota = self._get_quota({
+            'volumes_khoinh5': 20,
+            'gigabytes_khoinh5': 5000,
+            'snapshots_khoinh5': 30,
+            'volumes_gold_ssd': 40,
+            'gigabytes_gold_ssd': 6000,
+            'snapshots_gold_ssd': 50,
+        })
+
+        self.mock_get_disabled_quotas.return_value = set()
+        self.mock_get_tenant_quota_data.return_value = quota
+
+        url = reverse('horizon:identity:projects:update_quotas',
+                      args=[self.tenant.id])
+        res = self.client.get(url)
+
+        self.assertTemplateUsed(res, views.WorkflowView.template_name)
+
+        workflow = res.context['workflow']
+        step = workflow.get_step("update_volume_quotas")
+        self.assertEqual(
+            ('volumes', 'gigabytes', 'snapshots',
+             'volumes_khoinh5', 'gigabytes_khoinh5', 'snapshots_khoinh5',
+             'volumes_gold_ssd', 'gigabytes_gold_ssd',
+             'snapshots_gold_ssd'),
+            workflow.context['volume_quota_fields'])
+        self.assertEqual(20,
+                         workflow.context['volume_quota_data'][
+                             'volumes_khoinh5'])
+        self.assertEqual(6000,
+                         workflow.context['volume_quota_data'][
+                             'gigabytes_gold_ssd'])
+        self.assertEqual(step.action.initial['volumes_khoinh5'], 20)
+        self.assertEqual(step.action.initial['gigabytes_khoinh5'], 5000)
+        self.assertEqual(step.action.initial['snapshots_khoinh5'], 30)
+        self.assertEqual(str(step.action.fields['volumes_khoinh5'].label),
+                         'Volumes of Type khoinh5')
+        self.assertEqual(str(step.action.fields['gigabytes_gold_ssd'].label),
+                         'Total Size of Volumes and Snapshots (GiB) '
+                         'of Type gold_ssd')
+        self.assertEqual(str(step.action.fields['snapshots_gold_ssd'].label),
+                         'Volume Snapshots of Type gold_ssd')
+
     @test.create_mocks({
         api.nova: (('tenant_quota_update', 'nova_tenant_quota_update'),),
         api.cinder: (('tenant_quota_update', 'cinder_tenant_quota_update'),),
         quotas: ('get_tenant_quota_data',
                  'get_disabled_quotas',
                  'tenant_quota_usages',)})
-    def _test_update_quotas_save(self, with_neutron=False):
+    def _test_update_quotas_save(self, with_neutron=False,
+                                 cinder_quota_data=None):
         project = self.tenants.first()
-        quota = self.quotas.first()
+        quota = self._get_quota(cinder_quota_data)
         quota_usages = self.quota_usages.first()
 
         # get/init
         self.mock_get_disabled_quotas.return_value = set()
         self.mock_get_tenant_quota_data.return_value = quota
 
-        quota.metadata_items = 444
-        quota.volumes = 444
+        quota.get('metadata_items').limit = 444
+        quota.get('volumes').limit = 444
 
         updated_quota = self._get_quota_info(quota)
 
@@ -1047,9 +1104,12 @@ class UpdateQuotasWorkflowTests(test.BaseAdminViewTests):
             mock.call(test.IsHttpRequest(), tenant_id=project.id,
                       targets=tuple(quotas.NOVA_QUOTA_FIELDS)))
         self.mock_nova_tenant_quota_update.return_value = None
+        expected_volume_quota_fields = tuple(
+            quota.name for quota in quota if quotas.is_cinder_quota_key(
+                quota.name))
         expected_tenant_quota_usages.append(
             mock.call(test.IsHttpRequest(), tenant_id=project.id,
-                      targets=tuple(quotas.CINDER_QUOTA_FIELDS)))
+                      targets=expected_volume_quota_fields))
         self.mock_cinder_tenant_quota_update.return_value = None
         if with_neutron:
             self.mock_is_quotas_extension_supported.return_value = with_neutron
@@ -1079,7 +1139,7 @@ class UpdateQuotasWorkflowTests(test.BaseAdminViewTests):
             test.IsHttpRequest(), project.id, **nova_updated_quota)
 
         cinder_updated_quota = {key: updated_quota[key] for key
-                                in quotas.CINDER_QUOTA_FIELDS}
+                                in expected_volume_quota_fields}
         self.mock_cinder_tenant_quota_update.assert_called_once_with(
             test.IsHttpRequest(), project.id, **cinder_updated_quota)
         if with_neutron:
@@ -1098,6 +1158,13 @@ class UpdateQuotasWorkflowTests(test.BaseAdminViewTests):
     def test_update_quotas_save(self):
         self._test_update_quotas_save()
 
+    def test_update_quotas_save_with_volume_type_quotas(self):
+        self._test_update_quotas_save(cinder_quota_data={
+            'volumes_khoinh5': 20,
+            'gigabytes_khoinh5': 5000,
+            'snapshots_khoinh5': 30,
+        })
+
     @test.create_mocks({
         api.neutron: ('is_quotas_extension_supported',
                       ('tenant_quota_update', 'neutron_tenant_quota_update'))
@@ -1114,7 +1181,7 @@ class UpdateQuotasWorkflowTests(test.BaseAdminViewTests):
         api.nova: (('tenant_quota_update', 'nova_tenant_quota_update'),)})
     def test_update_quotas_update_error(self):
         project = self.tenants.first()
-        quota = self.quotas.first()
+        quota = self._get_quota()
         quota_usages = self.quota_usages.first()
 
         # get/init
@@ -1122,8 +1189,8 @@ class UpdateQuotasWorkflowTests(test.BaseAdminViewTests):
         self.mock_get_tenant_quota_data.return_value = quota
 
         # update some fields
-        quota[0].limit = 444
-        quota[1].limit = -1
+        quota.get('metadata_items').limit = 444
+        quota.get('cores').limit = -1
 
         updated_quota = self._get_quota_info(quota)
 
@@ -1146,11 +1213,14 @@ class UpdateQuotasWorkflowTests(test.BaseAdminViewTests):
             test.IsHttpRequest())
         self.mock_get_tenant_quota_data.assert_called_once_with(
             test.IsHttpRequest(), tenant_id=self.tenant.id)
+        expected_volume_quota_fields = tuple(
+            quota.name for quota in quota if quotas.is_cinder_quota_key(
+                quota.name))
         self.mock_tenant_quota_usages.assert_has_calls([
             mock.call(test.IsHttpRequest(), tenant_id=project.id,
                       targets=tuple(quotas.NOVA_QUOTA_FIELDS)),
             mock.call(test.IsHttpRequest(), tenant_id=project.id,
-                      targets=tuple(quotas.CINDER_QUOTA_FIELDS)),
+                      targets=expected_volume_quota_fields),
         ])
         self.assertEqual(2, self.mock_tenant_quota_usages.call_count)
 
@@ -1160,7 +1230,7 @@ class UpdateQuotasWorkflowTests(test.BaseAdminViewTests):
             test.IsHttpRequest(), project.id, **nova_updated_quota)
         # handle() of all steps are called even after one of handle() fails.
         cinder_updated_quota = {key: updated_quota[key] for key
-                                in quotas.CINDER_QUOTA_FIELDS}
+                                in expected_volume_quota_fields}
         self.mock_cinder_tenant_quota_update.assert_called_once_with(
             test.IsHttpRequest(), project.id, **cinder_updated_quota)
 

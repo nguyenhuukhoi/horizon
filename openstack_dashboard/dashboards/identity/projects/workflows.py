@@ -48,6 +48,25 @@ PROJECT_GROUP_MEMBER_SLUG = "update_group_members"
 COMMON_HORIZONTAL_TEMPLATE = "identity/projects/_common_horizontal_form.html"
 
 
+def get_volume_quota_name(name):
+    quota_names = {
+        'volumes': _("Volumes"),
+        'snapshots': _("Volume Snapshots"),
+        'gigabytes': _("Total Size of Volumes and Snapshots (GiB)"),
+    }
+    quota_dynamic_names = {
+        'volumes': _('Volumes of Type %(type)s'),
+        'snapshots': _('Volume Snapshots of Type %(type)s'),
+        'gigabytes':
+            _('Total Size of Volumes and Snapshots (GiB) of Type %(type)s'),
+    }
+
+    if name.startswith(quotas.CINDER_QUOTA_FIELD_PREFIXES):
+        params = {'type': name.split('_', 1)[1]}
+        return quota_dynamic_names.get(name.split('_', 1)[0]) % params
+    return quota_names.get(name, quotas.QUOTA_NAMES.get(name, name))
+
+
 class CommonQuotaAction(workflows.Action):
 
     _quota_fields = None
@@ -84,8 +103,8 @@ class CommonQuotaAction(workflows.Action):
     def handle(self, request, context):
         project_id = context['project_id']
         disabled_quotas = context['disabled_quotas']
-        data = {key: context[key] for key in
-                self._quota_fields - disabled_quotas}
+        data = {key: context[key] for key in self._quota_fields
+                if key not in disabled_quotas}
         if data:
             self._tenant_quota_update(request, project_id, data)
 
@@ -133,6 +152,21 @@ class VolumeQuotaAction(CommonQuotaAction):
 
     _quota_fields = quotas.CINDER_QUOTA_FIELDS
 
+    def __init__(self, request, *args, **kwargs):
+        super().__init__(request, *args, **kwargs)
+        volume_quota_fields = self.initial.get('volume_quota_fields', ())
+        volume_quota_data = self.initial.get('volume_quota_data', {})
+        self._quota_fields = tuple(volume_quota_fields) or tuple(
+            quotas.CINDER_QUOTA_FIELDS)
+        for field in volume_quota_fields:
+            if field not in self.fields:
+                field_initial = volume_quota_data.get(field)
+                self.fields[field] = forms.IntegerField(
+                    min_value=-1,
+                    initial=field_initial,
+                    label=get_volume_quota_name(field))
+                self.initial[field] = field_initial
+
     def _tenant_quota_update(self, request, project_id, data):
         cinder.tenant_quota_update(request, project_id, **data)
 
@@ -179,8 +213,15 @@ class UpdateComputeQuota(workflows.Step):
 class UpdateVolumeQuota(workflows.Step):
     action_class = VolumeQuotaAction
     template_name = COMMON_HORIZONTAL_TEMPLATE
-    depends_on = ("project_id", "disabled_quotas")
+    depends_on = ("project_id", "disabled_quotas",
+                  "volume_quota_fields", "volume_quota_data")
     contributes = quotas.CINDER_QUOTA_FIELDS
+
+    def prepare_action_context(self, request, context):
+        volume_quota_fields = context.get('volume_quota_fields', ())
+        self.contributes = tuple(volume_quota_fields) or tuple(
+            quotas.CINDER_QUOTA_FIELDS)
+        return context
 
     def allowed(self, request):
         return cinder.is_volume_service_enabled(request)
