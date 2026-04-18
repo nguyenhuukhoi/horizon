@@ -161,7 +161,7 @@ def quotapercent(used, limit):
     if used >= limit or limit == 0:
         return 100
     if limit == float("inf"):
-        return '[%s, true]' % used
+        return 0
     return round((float(used) / float(limit)) * 100)
 
 

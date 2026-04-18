@@ -115,6 +115,14 @@ class TemplateTagTests(test.TestCase):
                                             context={'test': ctx_string})
         self.assertEqual(expected, rendered_str)
 
+    def test_quotapercent_with_infinite_limit(self):
+        text = '{% quotapercent 117 test.val1 %}'
+
+        rendered_str = self.render_template(tag_require='horizon',
+                                            template_text=text,
+                                            context={'test': {'val1': float('inf')}})
+        self.assertEqual(' 0', rendered_str)
+
     def test_angular_escapes_filter(self):
         ctx_string = {'val1': "\'a \"quotes\" test\'",
                       'val2': "how about line\r\nbreaks",
